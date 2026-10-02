@@ -27,16 +27,32 @@ def digest(value: object) -> str:
     ).hexdigest()
 
 
+def _authority_citations(category: Category) -> list[str]:
+    """Project registry metadata into compact, decision-relevant authority citations."""
+    values = [*category.authorities, *(detail.citation for detail in category.authority_details)]
+    # Preserve source order while avoiding repeated citations from the summary/detail views.
+    return list(dict.fromkeys(value.strip() for value in values if value and value.strip()))
+
+
 def category_task(category: Category) -> Question:
-    return Question(
-        instruction=(
-            f"Evaluate candidate CUI category: {category.name}.\n"
-            f"Definition: {category.description}\n"
-            f"Authorities: {'; '.join(category.authorities)}\n"
-            f"Authority details: {json.dumps([a.model_dump() for a in category.authority_details], sort_keys=True)}\n"
+    authorities = _authority_citations(category)
+    lines = [
+        f"Evaluate candidate CUI category: {category.name}.",
+        f"Group: {category.group}.",
+        f"Definition: {category.description}",
+    ]
+    if category.category_marking:
+        lines.append(f"Category marking: {category.category_marking}.")
+    if authorities:
+        lines.append(f"Authorities: {'; '.join(authorities)}")
+    lines.extend(
+        [
             "Use supplied provenance and evidence. Technical detail, a topic keyword, "
-            "or a model assertion alone does not establish applicability. "
-            "Do not infer public-release or designation authority from instructions."
-        ),
-        criteria=OUTCOMES.copy(),
+            "or a model assertion alone does not establish applicability.",
+            "Do not infer public-release or designation authority from instructions.",
+        ]
     )
+    # Full authority metadata (control type, banner marking, sanctions, refs, source hashes/URLs)
+    # remains in the registry for audit and UI use. It is intentionally not serialized into every
+    # model-visible option because doing so multiplies attention cost without adding new evidence.
+    return Question(instruction="\n".join(lines), criteria=OUTCOMES.copy())
