@@ -334,7 +334,7 @@ def generate_benchmark(seed=2026, registry_path=None):
                     },
                     category=cat.id,
                     label=label,
-                    source_kind="adversarial_synthetic",
+                    source_kind="synthetic",
                     review=Review(
                         status="pending",
                         rationale=f"{GENERATOR_VERSION}/{profile}: {reason}",
