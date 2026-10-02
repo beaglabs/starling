@@ -7,7 +7,7 @@ from starlings.datasets import assert_disjoint, read_rows, split_rows
 from starlings.model import ModelConfig
 from starlings.preparation import extract_pdf, make_demo, scaffold
 from starlings.registry import category_task, load_registry
-from starlings.schemas import Content, DecisionRow, Question, Review
+from starlings.schemas import Authority, Category, Content, DecisionRow, Question, Review
 
 
 def test_all_categories_are_pinned_and_scaffold_is_unreviewed(tmp_path):
@@ -25,6 +25,37 @@ def test_all_categories_are_pinned_and_scaffold_is_unreviewed(tmp_path):
     rows = read_rows(tmp_path / "drafts.jsonl")
     assert {r.category for r in rows} == {c.id for c in registry.categories}
     assert all(r.label is None and r.review.status == "pending" for r in rows)
+
+
+def test_category_task_uses_compact_policy_projection():
+    category = Category(
+        id="test_category",
+        name="Test Category",
+        group="Defense",
+        description="A short decision-relevant definition.",
+        category_marking="TEST",
+        authorities=["Top-level authority"],
+        authority_details=[
+            Authority(
+                citation="Detailed citation",
+                control_type="DO_NOT_SERIALIZE_CONTROL_TYPE",
+                banner_marking="DO_NOT_SERIALIZE_BANNER",
+                sanctions="DO_NOT_SERIALIZE_SANCTIONS",
+                refs=["https://example.invalid/do-not-serialize"],
+            )
+        ],
+        source_url="https://example.invalid/category",
+        source_sha256="0" * 64,
+    )
+    instruction = category_task(category).instruction
+    assert "Test Category" in instruction
+    assert "Group: Defense" in instruction
+    assert "A short decision-relevant definition." in instruction
+    assert "Category marking: TEST" in instruction
+    assert "Top-level authority; Detailed citation" in instruction
+    assert "DO_NOT_SERIALIZE" not in instruction
+    assert "https://example.invalid/do-not-serialize" not in instruction
+    assert category.source_url not in instruction
 
 
 def test_group_split_and_duplicate_content_detection(tmp_path):
