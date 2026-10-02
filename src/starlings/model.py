@@ -24,6 +24,9 @@ class ModelConfig:
     # initializations set option_mean explicitly so option identity cannot be diluted
     # across a long evidence sequence.
     decision_pooling: str = "cls"
+    # Legacy checkpoints also omit structured state features and preserve the original scorer
+    # shape. Fresh checkpoints set this to the deterministic state feature contract size.
+    state_feature_dim: int = 0
 
     def __post_init__(self):
         if (
@@ -46,6 +49,8 @@ class ModelConfig:
             raise ValueError("Invalid dropout/pad id")
         if self.decision_pooling not in {"cls", "option_mean"}:
             raise ValueError("decision_pooling must be 'cls' or 'option_mean'")
+        if self.state_feature_dim < 0:
+            raise ValueError("state_feature_dim must be nonnegative")
 
     def to_dict(self):
         return asdict(self)
@@ -70,8 +75,18 @@ class DecisionEncoder(nn.Module):
         )
         self.encoder = nn.TransformerEncoder(layer, config.layers, enable_nested_tensor=False)
         self.norm = nn.LayerNorm(config.hidden_size)
+        if config.state_feature_dim:
+            self.state_encoder = nn.Sequential(
+                nn.Linear(config.state_feature_dim, config.hidden_size),
+                nn.GELU(),
+                nn.LayerNorm(config.hidden_size),
+            )
+            scorer_input = config.hidden_size * 2
+        else:
+            self.state_encoder = None
+            scorer_input = config.hidden_size
         self.scorer = nn.Sequential(
-            nn.Linear(config.hidden_size, config.hidden_size // 2),
+            nn.Linear(scorer_input, config.hidden_size // 2),
             nn.GELU(),
             nn.Linear(config.hidden_size // 2, 1),
         )
@@ -99,7 +114,7 @@ class DecisionEncoder(nn.Module):
         x = self.encoder(x, src_key_padding_mask=~attention_mask.bool())
         return self.norm(x)
 
-    def forward(self, input_ids, attention_mask, decision_mask=None):
+    def forward(self, input_ids, attention_mask, decision_mask=None, state_features=None):
         hidden = self.representations(input_ids, attention_mask)
         if self.config.decision_pooling == "cls":
             pooled = hidden[:, 0]
@@ -111,6 +126,15 @@ class DecisionEncoder(nn.Module):
             if (counts == 0).any():
                 raise ValueError("Decision mask contains an empty option span")
             pooled = (hidden * selected.unsqueeze(-1)).sum(dim=1) / counts
+
+        if self.state_encoder is not None:
+            expected = (input_ids.shape[0], self.config.state_feature_dim)
+            if state_features is None or tuple(state_features.shape) != expected:
+                raise ValueError(
+                    f"Structured-state model requires state features with shape {expected}"
+                )
+            state_hidden = self.state_encoder(state_features.to(dtype=pooled.dtype))
+            pooled = torch.cat([pooled, state_hidden], dim=-1)
         return self.scorer(pooled).squeeze(-1)
 
     def masked_logits(self, input_ids, attention_mask, positions):
