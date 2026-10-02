@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "beaglabs-starlings"
+version = "0.1.0"
+description = "Local, non-generative decision models with category-conditioned training and evidence-aware SDKs."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name = "Beag Labs"}]
+dependencies = [
+  "torch>=2.6,<3", "tokenizers>=0.21,<1", "safetensors>=0.5,<1",
+  "pydantic>=2.10,<3", "numpy>=1.26,<3"
+]
+
+[project.optional-dependencies]
+pdf = ["pymupdf>=1.25,<2"]
+registry = ["beautifulsoup4>=4.13,<5"]
+dev = ["pytest>=8.3,<10", "ruff>=0.11,<1", "build>=1.2,<2"]
+
+[project.scripts]
+starlings = "starlings.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/beaglabs/starling"
+Issues = "https://github.com/beaglabs/starling/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/starlings"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

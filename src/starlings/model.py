@@ -1,0 +1,123 @@
+"""Random-initialized bidirectional encoder with MLM and independent option scoring."""
+
+from __future__ import annotations
+
+import random
+from dataclasses import asdict, dataclass
+
+import numpy as np
+import torch
+from torch import nn
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    vocab_size: int = 16_000
+    hidden_size: int = 512
+    layers: int = 8
+    heads: int = 8
+    intermediate_size: int = 2048
+    max_length: int = 1024
+    dropout: float = 0.1
+    pad_id: int = 0
+
+    def __post_init__(self):
+        if (
+            min(
+                self.vocab_size,
+                self.hidden_size,
+                self.layers,
+                self.heads,
+                self.intermediate_size,
+                self.max_length,
+            )
+            <= 0
+        ):
+            raise ValueError("Model dimensions must be positive")
+        if self.max_length < 8 or self.hidden_size < 2 or self.vocab_size < 6:
+            raise ValueError("Context, hidden size or vocabulary is too small")
+        if self.hidden_size % self.heads:
+            raise ValueError("hidden_size must be divisible by heads")
+        if not 0 <= self.dropout < 1 or not 0 <= self.pad_id < self.vocab_size:
+            raise ValueError("Invalid dropout/pad id")
+
+    def to_dict(self):
+        return asdict(self)
+
+
+class DecisionEncoder(nn.Module):
+    def __init__(self, config: ModelConfig):
+        super().__init__()
+        self.config = config
+        self.token_embedding = nn.Embedding(
+            config.vocab_size, config.hidden_size, padding_idx=config.pad_id
+        )
+        self.position_embedding = nn.Embedding(config.max_length, config.hidden_size)
+        layer = nn.TransformerEncoderLayer(
+            config.hidden_size,
+            config.heads,
+            config.intermediate_size,
+            config.dropout,
+            activation="gelu",
+            batch_first=True,
+            norm_first=True,
+        )
+        self.encoder = nn.TransformerEncoder(layer, config.layers, enable_nested_tensor=False)
+        self.norm = nn.LayerNorm(config.hidden_size)
+        self.scorer = nn.Sequential(
+            nn.Linear(config.hidden_size, config.hidden_size // 2),
+            nn.GELU(),
+            nn.Linear(config.hidden_size // 2, 1),
+        )
+        self.mlm_bias = nn.Parameter(torch.zeros(config.vocab_size))
+        self.apply(self._initialize)
+        with torch.no_grad():
+            self.token_embedding.weight[config.pad_id].zero_()
+
+    @staticmethod
+    def _initialize(module):
+        if isinstance(module, nn.MultiheadAttention):
+            nn.init.normal_(module.in_proj_weight, mean=0, std=0.02)
+            if module.in_proj_bias is not None:
+                nn.init.zeros_(module.in_proj_bias)
+        if isinstance(module, (nn.Linear, nn.Embedding)):
+            nn.init.normal_(module.weight, mean=0, std=0.02)
+            if isinstance(module, nn.Linear) and module.bias is not None:
+                nn.init.zeros_(module.bias)
+
+    def representations(self, input_ids, attention_mask):
+        if input_ids.shape[1] > self.config.max_length:
+            raise ValueError("Sequence exceeds model context")
+        positions = torch.arange(input_ids.shape[1], device=input_ids.device)
+        x = self.token_embedding(input_ids) + self.position_embedding(positions)[None, :, :]
+        x = self.encoder(x, src_key_padding_mask=~attention_mask.bool())
+        return self.norm(x)
+
+    def forward(self, input_ids, attention_mask):
+        return self.scorer(self.representations(input_ids, attention_mask)[:, 0]).squeeze(-1)
+
+    def masked_logits(self, input_ids, attention_mask, positions):
+        hidden = self.representations(input_ids, attention_mask)[positions]
+        return nn.functional.linear(hidden, self.token_embedding.weight, self.mlm_bias)
+
+
+def select_device(requested="auto") -> torch.device:
+    if requested == "auto":
+        requested = (
+            "cuda"
+            if torch.cuda.is_available()
+            else ("mps" if torch.backends.mps.is_available() else "cpu")
+        )
+    if requested == "mps" and not torch.backends.mps.is_available():
+        raise RuntimeError("MPS requested but unavailable; choose --device cpu explicitly")
+    if requested == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA requested but unavailable")
+    return torch.device(requested)
+
+
+def seed_everything(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
