@@ -46,7 +46,7 @@ starlings train-encoder --output runs/cui-demo --device mps
 
 The command creates random width-128, two-layer encoder weights, trains BPE, performs 50 masked-language pretraining steps, trains one decision epoch, calibrates on 504 examples, then evaluates the other 504 benchmark examples. Encoder weights are updated, not frozen. Flags include `--hidden-size`, `--layers`, `--heads`, `--vocab-size`, `--epochs`, `--pretrain-steps`, `--max-steps`, `--grad-accum`, `--lr`, and `--seed`.
 
-Context length is chosen from the longest packed training/validation input, rounded up with a margin. The command does not silently discard long authority definitions. Larger context increases memory and training cost. Start with a capped run if needed; no M2 completion-time or accuracy claim is made.
+Context length is chosen from the longest packed training/validation input, rounded up with a margin. Category prompts use a compact model-visible projection containing the category name, group, definition, marking and authority citations. Full authority metadata such as control type, banner marking, sanctions, references, source URLs and hashes remains in the registry for auditability and UI use instead of being serialized into every decision option. This keeps attention focused on decision-relevant policy text and avoids multiplying registry boilerplate across the three outcome sequences.
 
 The bundled dataset is seed 42 regardless of the model initialization seed. Regenerate fixtures explicitly with `data cui-demo --seed 7 --output ...`, then pass that directory using `train-encoder --dataset ...`. Generation count is bounded by this eight-family design; `--count` defaults to exactly 4,000.
 
