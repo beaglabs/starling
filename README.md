@@ -76,6 +76,42 @@ Outputs are immutable by default. Use a fresh output directory for a second run:
 bash scripts/smoke.sh runs/another-smoke
 ```
 
+## 4,000-example CUI demo
+
+The package now includes **exactly 4,000 seeded, unreviewed synthetic examples covering all 126 categories**, with complete source/provenance objects and explicit JSON facts. Export the actual dataset:
+
+```bash
+starlings data cui-demo --output datasets/cui-4000
+```
+
+| Split | Examples | Category coverage |
+| :--- | ---: | ---: |
+| Training | 2,488 | 126/126 |
+| Validation | 504 | 126/126 |
+| Calibration | 504 | 126/126 |
+| Benchmark test | 504 | 126/126 |
+
+Each category has 31–32 examples across eight scenario families. Paired changes stay in the same split. Every category has applicable, not-applicable and insufficient-evidence labels in every split. Scenarios vary agency records, contract deliveries, public reports, document formats, dates, project references, authorized decontrol, unknown origins, conflicting assertions, routine topic mentions, document instructions and joint-block context.
+
+**Train the encoder on your Mac in one command:**
+
+```bash
+starlings train-encoder --output runs/cui-demo --device mps
+```
+
+This exports the bundled dataset, trains a local tokenizer, initializes random encoder weights, runs language pretraining and decision training, calibrates, and evaluates the separate 504-example benchmark. It trains the encoder and scorer together. Defaults are width 128, two layers, 50 language-pretraining steps and one decision epoch. Context length is selected from training/validation token lengths with a safety margin. No pretrained model downloads or reviewer approval are required for this explicitly experimental command.
+
+For a shorter first run:
+
+```bash
+starlings train-encoder --output runs/cui-quick --device mps \
+  --pretrain-steps 10 --max-steps 25
+```
+
+Short runs may not train on every category even though all categories are present in the dataset. To use an already-exported dataset, add `--dataset datasets/cui-4000`. CPU and CUDA are also selectable.
+
+Outputs include `encoder/`, `calibration.json`, `benchmark.json` and `run.json`. **Benchmark scores measure agreement with the generator's assumptions, not independently validated CUI accuracy.** Labels remain pending; source locations use `example.invalid`. Public access alone does not create a negative label: the released variants explicitly assume authorized decontrol and removal of all restrictions. Category names and structured facts can create shortcuts, and templates are shared across disjoint document families. See [dataset details](docs/cui-demo.md).
+
 ## Python SDK
 
 After training your decision model:
@@ -268,6 +304,8 @@ Use the same settings for calibration. Unsupported deterministic operations fail
 | `doctor` | Inspect runtime and available devices |
 | `registry list / refresh` | Read the pinned registry or explicitly fetch a fresh snapshot |
 | `data scaffold / validate / split` | Draft all categories, check review records, create group-safe splits |
+| `data cui-demo` | Export the bundled 4,000-example all-category CUI dataset |
+| `train-encoder` | Train and benchmark a random encoder on the synthetic CUI demo |
 | `data corpus / demo` | Assemble text inputs or create a fictional routing demo |
 | `tokenizer train` | Train local byte-level BPE |
 | `init` | Initialize random encoder weights |
@@ -289,6 +327,7 @@ A new registry must be selected explicitly at initialization with `--registry`. 
 | Guide | Contents |
 | :--- | :--- |
 | [Training](docs/training.md) | Lifecycle, device selection, checkpoints, calibration, evaluation |
+| [CUI demo dataset](docs/cui-demo.md) | 4,000 examples, generation assumptions, JSON facts and local training |
 | [Datasets](docs/datasets.md) | JSONL schema, review records, paired scenarios, leakage controls |
 | [SDK](docs/sdk.md) | Request/response fields, category scope, candidate validation, review gates |
 | [Registry index](docs/categories.md) | All category IDs and their official sources |

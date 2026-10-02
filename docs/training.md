@@ -65,3 +65,7 @@ Training rejects overlap between current train/validation groups and exact examp
 Reports expose overall accuracy, NLL, multiclass Brier score, ten-bin ECE, score-threshold coverage/accuracy, confusion, and per-category counts. `false_negative_rate` specifically counts gold `applicable` predicted `not_applicable`; abstentions are not included in that count. Inspect the confusion matrix and applicable recall alongside it. Missing categories are explicitly listed. No metric grants designation or release authority.
 
 The SDK also performs independent block and whole-document passes. A calibration corpus of short scenarios does not establish calibration for long documents, OCR corruption, windowed text, or new provenance patterns. Evaluate those deployment conditions separately.
+
+## One-command synthetic CUI encoder experiment
+
+`starlings train-encoder --output runs/cui-demo --device mps` performs the entire local training/calibration/benchmark lifecycle on the packaged 4,000-example fixture set. This command deliberately permits pending synthetic labels and propagates the experimental flag. It does not approve review records. See [CUI demo](cui-demo.md) for schema, counts, assumptions, and controls.
