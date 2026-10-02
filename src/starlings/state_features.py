@@ -36,7 +36,15 @@ STATE_FEATURE_NAMES = (
 )
 STATE_FEATURE_DIM = len(STATE_FEATURE_NAMES)
 
-_UNKNOWN = {"", "unknown", "none", "null", "not_established", "unverified", "unknown_from_available_records"}
+_UNKNOWN = {
+    "",
+    "unknown",
+    "none",
+    "null",
+    "not_established",
+    "unverified",
+    "unknown_from_available_records",
+}
 _CONFLICT_TERMS = ("conflict", "disput", "contest", "disagree", "contradict")
 _PUBLIC_SOURCE_TERMS = ("public", "publication", "archive", "reading_room")
 _RESTRICTED_ACCESS_TERMS = ("restrict", "need_to_know", "controlled", "internal")
