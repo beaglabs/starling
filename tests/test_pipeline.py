@@ -9,13 +9,14 @@ from starlings.checkpoint import load_checkpoint
 from starlings.datasets import read_rows, write_rows
 from starlings.evaluation import evaluate
 from starlings.schemas import Question
-from starlings.training import train
+from starlings.training import row_loss, train
 
 
 def test_random_pretrain_decision_lifecycle_and_integrity(pipeline, tmp_path):
     initial, _, _, first = load_checkpoint(pipeline / "init")
     trained, _, _, last = load_checkpoint(pipeline / "trained")
     assert first["stage"] == "initialized" and first["random_initialization"]
+    assert initial.config.decision_pooling == "option_mean"
     assert last["stage"] == "decision" and last["steps"] == 3
     assert not torch.equal(initial.token_embedding.weight, trained.token_embedding.weight)
     with pytest.raises(ValueError, match="decision-trained"):
@@ -24,6 +25,37 @@ def test_random_pretrain_decision_lifecycle_and_integrity(pipeline, tmp_path):
     (tmp_path / "tampered/config.json").write_text("{}")
     with pytest.raises(ValueError, match="integrity"):
         Classifier(tmp_path / "tampered")
+
+
+def test_option_pooling_can_learn_all_three_alternatives(pipeline):
+    model, tokenizer, registry, _ = load_checkpoint(pipeline / "init", "cpu")
+    rows = read_rows(pipeline / "splits/train.jsonl")
+    selected = {}
+    for row in rows:
+        selected.setdefault(row.label, row)
+    assert set(selected) == {"billing", "technical", "insufficient_evidence"}
+    examples = [selected[key] for key in sorted(selected)]
+
+    def average_loss():
+        return torch.stack(
+            [row_loss(model, tokenizer, row, registry, torch.device("cpu")) for row in examples]
+        ).mean()
+
+    model.train()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-3)
+    with torch.no_grad():
+        initial_loss = float(average_loss())
+    for _ in range(60):
+        optimizer.zero_grad(set_to_none=True)
+        loss = average_loss()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        optimizer.step()
+    model.eval()
+    with torch.no_grad():
+        final_loss = float(average_loss())
+    assert final_loss < 0.8
+    assert final_loss < initial_loss - 0.2
 
 
 def test_heldout_test_report_and_no_leakage(pipeline, tmp_path):

@@ -20,6 +20,10 @@ class ModelConfig:
     max_length: int = 1024
     dropout: float = 0.1
     pad_id: int = 0
+    # Legacy checkpoints omit this field and therefore retain CLS pooling. Fresh
+    # initializations set option_mean explicitly so option identity cannot be diluted
+    # across a long evidence sequence.
+    decision_pooling: str = "cls"
 
     def __post_init__(self):
         if (
@@ -40,6 +44,8 @@ class ModelConfig:
             raise ValueError("hidden_size must be divisible by heads")
         if not 0 <= self.dropout < 1 or not 0 <= self.pad_id < self.vocab_size:
             raise ValueError("Invalid dropout/pad id")
+        if self.decision_pooling not in {"cls", "option_mean"}:
+            raise ValueError("decision_pooling must be 'cls' or 'option_mean'")
 
     def to_dict(self):
         return asdict(self)
@@ -93,8 +99,19 @@ class DecisionEncoder(nn.Module):
         x = self.encoder(x, src_key_padding_mask=~attention_mask.bool())
         return self.norm(x)
 
-    def forward(self, input_ids, attention_mask):
-        return self.scorer(self.representations(input_ids, attention_mask)[:, 0]).squeeze(-1)
+    def forward(self, input_ids, attention_mask, decision_mask=None):
+        hidden = self.representations(input_ids, attention_mask)
+        if self.config.decision_pooling == "cls":
+            pooled = hidden[:, 0]
+        else:
+            if decision_mask is None or decision_mask.shape != attention_mask.shape:
+                raise ValueError("option_mean pooling requires a decision mask matching attention")
+            selected = decision_mask.bool() & attention_mask.bool()
+            counts = selected.sum(dim=1, keepdim=True)
+            if (counts == 0).any():
+                raise ValueError("Decision mask contains an empty option span")
+            pooled = (hidden * selected.unsqueeze(-1)).sum(dim=1) / counts
+        return self.scorer(pooled).squeeze(-1)
 
     def masked_logits(self, input_ids, attention_mask, positions):
         hidden = self.representations(input_ids, attention_mask)[positions]
