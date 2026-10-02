@@ -36,7 +36,15 @@ def parser():
     data = commands.add_parser(
         "data", help="Prepare reviewed JSONL and leak-resistant group splits"
     ).add_subparsers(dest="action", required=True)
-    for name in ["scaffold", "validate", "split", "demo", "corpus", "cui-demo"]:
+    for name in [
+        "scaffold",
+        "validate",
+        "split",
+        "demo",
+        "corpus",
+        "cui-demo",
+        "cui-demo-v2",
+    ]:
         sub = data.add_parser(name)
         if name != "demo":
             sub.add_argument("--registry")
@@ -47,6 +55,8 @@ def parser():
         if name == "cui-demo":
             sub.add_argument("--count", type=int, default=4000)
             sub.add_argument("--seed", type=int, default=42)
+        if name == "cui-demo-v2":
+            sub.add_argument("--seed", type=int, default=2026)
         if name == "split":
             sub.add_argument("--seed", type=int, default=42)
         if name == "validate":
@@ -215,6 +225,22 @@ def run(args):
                 "splits": {name: value["rows"] for name, value in manifest["splits"].items()},
                 "manifest": str(Path(args.output) / "manifest.json"),
                 "review_status": "pending",
+            }
+        if args.action == "cui-demo-v2":
+            from .synthetic_v2 import export_benchmark
+
+            manifest = export_benchmark(
+                args.output, seed=args.seed, registry_path=args.registry
+            )
+            return {
+                "output": args.output,
+                "benchmark": str(Path(args.output) / "benchmark.jsonl"),
+                "rows": manifest["rows"],
+                "categories": manifest["categories"],
+                "labels": manifest["labels"],
+                "manifest": str(Path(args.output) / "manifest.json"),
+                "review_status": "pending",
+                "intended_use": manifest["intended_use"],
             }
         if args.action == "demo":
             return make_demo(args.output)
