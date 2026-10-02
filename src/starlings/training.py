@@ -224,14 +224,14 @@ def train(
         for option in question.criteria:
             packed = pack(content_text(row.content), row.state, question, option)
             if model.config.decision_pooling == "option_mean":
-                _option_sequence(tokenizer, packed, question.criteria[option], model.config.max_length)
+                _option_sequence(
+                    tokenizer, packed, question.criteria[option], model.config.max_length
+                )
             else:
                 encode(tokenizer, packed, model.config.max_length)
     if freeze_encoder:
         for name, param in model.named_parameters():
-            param.requires_grad_(
-                name.startswith("scorer.") or name.startswith("state_encoder.")
-            )
+            param.requires_grad_(name.startswith("scorer.") or name.startswith("state_encoder."))
     optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=lr)
     losses, steps, started = [], 0, time.perf_counter()
     for epoch in range(epochs):
