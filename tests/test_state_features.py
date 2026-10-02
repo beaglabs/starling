@@ -8,7 +8,18 @@ from starlings.model import DecisionEncoder, ModelConfig
 from starlings.state_features import STATE_FEATURE_DIM, STATE_FEATURE_NAMES, state_feature_values
 
 
-def _state(*, source, relationship, controls, access, auth, release_id=None, decontrol=None, basis=True, provenance="assumed_true"):
+def _state(
+    *,
+    source,
+    relationship,
+    controls,
+    access,
+    auth,
+    release_id=None,
+    decontrol=None,
+    basis=True,
+    provenance="assumed_true",
+):
     return {
         "facts": {
             "source_type": source,
@@ -111,12 +122,35 @@ def test_structured_state_model_requires_and_fuses_feature_batch():
 
 def test_metrics_separate_applicable_abstention_from_hard_false_negative():
     options = ["applicable", "insufficient_evidence", "not_applicable"]
-    row = lambda label: SimpleNamespace(label=label, category="demo")
+
+    def row(label):
+        return SimpleNamespace(label=label, category="demo")
+
     records = [
-        {"row": row("applicable"), "options": options, "gold": 0, "logits": torch.tensor([5.0, 0.0, 0.0])},
-        {"row": row("applicable"), "options": options, "gold": 0, "logits": torch.tensor([0.0, 5.0, 0.0])},
-        {"row": row("applicable"), "options": options, "gold": 0, "logits": torch.tensor([0.0, 0.0, 5.0])},
-        {"row": row("not_applicable"), "options": options, "gold": 2, "logits": torch.tensor([0.0, 0.0, 5.0])},
+        {
+            "row": row("applicable"),
+            "options": options,
+            "gold": 0,
+            "logits": torch.tensor([5.0, 0.0, 0.0]),
+        },
+        {
+            "row": row("applicable"),
+            "options": options,
+            "gold": 0,
+            "logits": torch.tensor([0.0, 5.0, 0.0]),
+        },
+        {
+            "row": row("applicable"),
+            "options": options,
+            "gold": 0,
+            "logits": torch.tensor([0.0, 0.0, 5.0]),
+        },
+        {
+            "row": row("not_applicable"),
+            "options": options,
+            "gold": 2,
+            "logits": torch.tensor([0.0, 0.0, 5.0]),
+        },
     ]
     report = metrics(records)
     assert report["applicable_hits"] == 1
