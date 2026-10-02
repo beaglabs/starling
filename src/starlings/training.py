@@ -49,6 +49,7 @@ def initialize(tokenizer_path, output, config, registry_path=None, seed=42):
     model = DecisionEncoder(
         ModelConfig(
             **{
+                "decision_pooling": "option_mean",
                 **config,
                 "vocab_size": tokenizer.get_vocab_size(),
                 "pad_id": tokenizer.token_to_id("[PAD]"),
@@ -67,7 +68,11 @@ def initialize(tokenizer_path, output, config, registry_path=None, seed=42):
             "parameter_count": sum(p.numel() for p in model.parameters()),
         },
     )
-    return {"checkpoint": str(output), "parameters": sum(p.numel() for p in model.parameters())}
+    return {
+        "checkpoint": str(output),
+        "parameters": sum(p.numel() for p in model.parameters()),
+        "decision_pooling": model.config.decision_pooling,
+    }
 
 
 def tensor_batch(sequences, pad_id, device):
@@ -80,14 +85,49 @@ def tensor_batch(sequences, pad_id, device):
     return ids, mask
 
 
+def _option_sequence(tokenizer, packed, option_text, max_length):
+    encoded = tokenizer.encode(packed)
+    if len(encoded.ids) + 2 > max_length:
+        raise ValueError(
+            f"Input exceeds context: {len(encoded.ids) + 2} tokens > {max_length}; no silent truncation"
+        )
+    option_start = packed.rfind(option_text)
+    if option_start < 0 or option_start + len(option_text) != len(packed):
+        raise ValueError("Packed decision input does not end with the selected alternative")
+    option_mask = [False]
+    option_mask.extend(end > option_start for _, end in encoded.offsets)
+    option_mask.append(False)
+    if not any(option_mask):
+        raise ValueError("Selected alternative produced no scoreable tokens")
+    sequence = [tokenizer.token_to_id("[CLS]"), *encoded.ids, tokenizer.token_to_id("[SEP]")]
+    return sequence, option_mask
+
+
 def decision_logits(model, tokenizer, content, state, question, device):
     options = sorted(question.criteria)
-    sequences = [
-        encode(tokenizer, pack(content, state, question, option), model.config.max_length)
-        for option in options
-    ]
+    if model.config.decision_pooling == "cls":
+        sequences = [
+            encode(tokenizer, pack(content, state, question, option), model.config.max_length)
+            for option in options
+        ]
+        ids, mask = tensor_batch(sequences, model.config.pad_id, device)
+        return options, model(ids, mask)
+
+    sequences, option_masks = [], []
+    for option in options:
+        packed = pack(content, state, question, option)
+        sequence, option_mask = _option_sequence(
+            tokenizer, packed, question.criteria[option], model.config.max_length
+        )
+        sequences.append(sequence)
+        option_masks.append(option_mask)
     ids, mask = tensor_batch(sequences, model.config.pad_id, device)
-    return options, model(ids, mask)
+    decision_mask = torch.zeros_like(mask)
+    for i, option_mask in enumerate(option_masks):
+        decision_mask[i, : len(option_mask)] = torch.tensor(
+            option_mask, dtype=torch.bool, device=device
+        )
+    return options, model(ids, mask, decision_mask)
 
 
 def row_loss(model, tokenizer, row, registry, device):
@@ -149,11 +189,11 @@ def train(
     for row in train_rows + val_rows:
         question = row_task(row, registry)
         for option in question.criteria:
-            encode(
-                tokenizer,
-                pack(content_text(row.content), row.state, question, option),
-                model.config.max_length,
-            )
+            packed = pack(content_text(row.content), row.state, question, option)
+            if model.config.decision_pooling == "option_mean":
+                _option_sequence(tokenizer, packed, question.criteria[option], model.config.max_length)
+            else:
+                encode(tokenizer, packed, model.config.max_length)
     if freeze_encoder:
         for name, param in model.named_parameters():
             param.requires_grad_(name.startswith("scorer."))
@@ -227,6 +267,7 @@ def train(
         "loss": losses[-1],
         "validation_loss": validation_loss,
         "device": str(selected),
+        "decision_pooling": model.config.decision_pooling,
     }
 
 
