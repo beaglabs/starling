@@ -36,7 +36,7 @@ def parser():
     data = commands.add_parser(
         "data", help="Prepare reviewed JSONL and leak-resistant group splits"
     ).add_subparsers(dest="action", required=True)
-    for name in ["scaffold", "validate", "split", "demo", "corpus"]:
+    for name in ["scaffold", "validate", "split", "demo", "corpus", "cui-demo"]:
         sub = data.add_parser(name)
         if name != "demo":
             sub.add_argument("--registry")
@@ -44,6 +44,9 @@ def parser():
             sub.add_argument("--input", required=True)
         if name != "validate":
             sub.add_argument("--output", required=True)
+        if name == "cui-demo":
+            sub.add_argument("--count", type=int, default=4000)
+            sub.add_argument("--seed", type=int, default=42)
         if name == "split":
             sub.add_argument("--seed", type=int, default=42)
         if name == "validate":
@@ -118,6 +121,29 @@ def parser():
             )
             sub.add_argument("--deterministic", action="store_true", default=argparse.SUPPRESS)
             sub.add_argument("--max-evaluations", type=int, default=4096)
+    encoder = commands.add_parser(
+        "train-encoder",
+        help="Train and benchmark a random encoder on the 4000 synthetic CUI examples",
+    )
+    encoder.add_argument("--output", required=True)
+    encoder.add_argument(
+        "--dataset",
+        help="Directory containing four split JSONL files and registry.json; defaults to bundled CUI demo",
+    )
+    encoder.add_argument("--device", choices=["auto", "cpu", "mps", "cuda"], default="auto")
+    encoder.add_argument("--seed", type=int, default=42)
+    for flag, default in [
+        ("vocab-size", 8000),
+        ("hidden-size", 128),
+        ("layers", 2),
+        ("heads", 4),
+        ("epochs", 1),
+        ("pretrain-steps", 50),
+        ("grad-accum", 4),
+    ]:
+        encoder.add_argument(f"--{flag}", type=int, default=default)
+    encoder.add_argument("--max-steps", type=int)
+    encoder.add_argument("--lr", type=float, default=3e-4)
     pdf = (
         commands.add_parser("pdf", help="Extract stable source blocks from a PDF text layer")
         .add_subparsers(dest="action", required=True)
@@ -155,9 +181,41 @@ def run(args):
             "version": registry.version,
             "categories": [c.model_dump() for c in registry.categories],
         }
+    if args.command == "train-encoder":
+        from .encoder_demo import train_encoder
+
+        return train_encoder(
+            args.output,
+            dataset=args.dataset,
+            device=args.device,
+            seed=args.seed,
+            vocab_size=args.vocab_size,
+            hidden_size=args.hidden_size,
+            layers=args.layers,
+            heads=args.heads,
+            epochs=args.epochs,
+            pretrain_steps=args.pretrain_steps,
+            max_steps=args.max_steps,
+            grad_accum=args.grad_accum,
+            lr=args.lr,
+        )
     if args.command == "data":
         from .preparation import make_demo, prepare_corpus, scaffold
 
+        if args.action == "cui-demo":
+            from .synthetic import export_dataset
+
+            manifest = export_dataset(
+                args.output, count=args.count, seed=args.seed, registry_path=args.registry
+            )
+            return {
+                "output": args.output,
+                "rows": manifest["rows"],
+                "categories": len(manifest["splits"]["train"]["categories"]),
+                "splits": {name: value["rows"] for name, value in manifest["splits"].items()},
+                "manifest": str(Path(args.output) / "manifest.json"),
+                "review_status": "pending",
+            }
         if args.action == "demo":
             return make_demo(args.output)
         if args.action == "scaffold":

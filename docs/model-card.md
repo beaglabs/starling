@@ -36,3 +36,7 @@ Collect category-specific applicable, not-applicable, and insufficient-evidence 
 Assess actual deployment hardware and latency. The reference implementation is not optimized to batch hundreds of categories simultaneously and has no quantized inference/export backend. MPS support is implemented; implementation verification occurred on CPU, not an M2.
 
 The model outputs proposals. The host remains responsible for authoritative designation, marking, handling, and release decisions.
+
+## Packaged CUI synthetic benchmark
+
+The package also supplies 4,000 seeded CUI fixtures and a one-command encoder training workflow. Every category appears in every split, but labels are unreviewed generator assumptions. Category titles and state fields provide shortcuts; templates are shared across split families. Reported performance is synthetic-label agreement, not independent CUI validation. See [dataset details](cui-demo.md).

@@ -1,0 +1,71 @@
+{
+  "id": "DEMO-66ef65679547021a",
+  "group_id": "controlled_technical_information-technical_report",
+  "content": {
+    "blocks": [
+      {
+        "id": "p1-b1",
+        "text": "Fictional Controlled Technical Information scenario. Attachment FX-637234: technical report for Harbor. Recorded on 2026-04-25; contents include drawing revisions, maintenance findings and non-public engineering attachments.",
+        "page": 1
+      },
+      {
+        "id": "p1-b2",
+        "text": "Supporting controlled technical information material is attached to record FX-637234; all names and values are invented.",
+        "page": 1
+      }
+    ],
+    "extraction_warnings": [],
+    "sha256": null
+  },
+  "state": {
+    "facts": {
+      "source_type": "contract_deliverable",
+      "source_identity": "Fictional Records Office",
+      "government_relationship": "government_information",
+      "public_release_status": "not_publicly_released",
+      "release_authorization": {
+        "status": "absent",
+        "record_id": null
+      },
+      "handling": {
+        "access": "restricted",
+        "basis_refs": [
+          "48 CFR 252.204-7012"
+        ],
+        "controls_in_force": true,
+        "decontrol_record": null
+      },
+      "contract": {
+        "id": "DEMO-CONTRACT-66ef6567",
+        "relationship": "deliverable"
+      }
+    },
+    "provenance": {
+      "source_id": "DEMO-66ef65679547021a",
+      "source_uri": "https://example.invalid/fixtures/66ef65679547021a",
+      "source_type": "contract_deliverable",
+      "asserted_by": "demo-host",
+      "assertion_status": "assumed_true_for_synthetic_fixture",
+      "collected_at": "2026-04-25T12:00:00Z",
+      "fictional": true
+    },
+    "document": {
+      "format": "technical_report",
+      "language": "en",
+      "created_at": "2026-04-25"
+    }
+  },
+  "category": "controlled_technical_information",
+  "question": null,
+  "label": "applicable",
+  "target": null,
+  "review": {
+    "status": "pending",
+    "reviewer": null,
+    "rationale": "cui-synthetic-v1/controlled: Generator assumes the case falls within the named category and its cited controls apply.",
+    "authority_refs": [
+      "https://www.archives.gov/cui/registry/category-detail/controlled-technical-info"
+    ]
+  },
+  "source_kind": "paired"
+}
