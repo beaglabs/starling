@@ -143,7 +143,9 @@ def generate_benchmark(seed=2026, registry_path=None):
             )[:16]
             ref = f"ADV-{token[:10].upper()}"
             date = f"2026-{rng.randrange(1, 10):02d}-{rng.randrange(1, 29):02d}"
-            origin = rng.choice(["agency_record", "contract_deliverable", "internal_correspondence"])
+            origin = rng.choice(
+                ["agency_record", "contract_deliverable", "internal_correspondence"]
+            )
             agency = rng.choice(
                 [
                     "Fictional Program Office",

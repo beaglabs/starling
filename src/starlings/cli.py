@@ -229,9 +229,7 @@ def run(args):
         if args.action == "cui-demo-v2":
             from .synthetic_v2 import export_benchmark
 
-            manifest = export_benchmark(
-                args.output, seed=args.seed, registry_path=args.registry
-            )
+            manifest = export_benchmark(args.output, seed=args.seed, registry_path=args.registry)
             return {
                 "output": args.output,
                 "benchmark": str(Path(args.output) / "benchmark.jsonl"),

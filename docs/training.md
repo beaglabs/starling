@@ -14,6 +14,10 @@ Follow the executable command sequence in the [README](../README.md#train-your-m
 
 No pretrained assets are downloaded. The shipped model is a plain bidirectional PyTorch Transformer with learned positional embeddings and a shared alternative scorer. Pretraining ties its vocabulary projection to token embeddings and computes logits only at masked positions.
 
+Fresh checkpoints also include a deterministic structured-state branch for high-value caller facts. The complete JSON state remains in the text input, but documented provenance/release/control fields are normalized into a fixed feature vector and fused with the contextualized alternative representation before scoring. This prevents wording changes such as `restricted` versus `need to know` from being the only signal available to the model. Legacy checkpoints omit the feature dimension and preserve their original scorer and weights.
+
+The structured-state normalizer is not a CUI designation engine. It projects caller-supplied facts such as `controls_in_force`, release/decontrol record presence, source/provenance knownness, authorization state, access state, control-basis presence, and conflicts. It does not infer whether those supplied facts are legally correct.
+
 ## Trainer behavior
 
 | Setting | Behavior |
@@ -25,7 +29,7 @@ No pretrained assets are downloaded. The shipped model is a plain bidirectional 
 | Memory | One row's alternatives form a microbatch; `--grad-accum` accumulates rows |
 | Validation | Final validation loss; no automatic best-checkpoint selection or early stopping |
 | Continuation | Pass a prior decision checkpoint to `train`; optimizer state starts fresh |
-| Encoder freezing | `--freeze-encoder` updates only the decision scorer |
+| Encoder freezing | `--freeze-encoder` updates the decision scorer and structured-state branch while freezing the text encoder |
 | Ordering | Alternative IDs are sorted; each is scored independently using its description |
 | Long training examples | Reject before compute; no silent truncation |
 | Dataset size | Reference preparation/pretraining loads text into memory; not a streaming distributed trainer |
@@ -48,9 +52,9 @@ Each immutable output directory contains:
 | --- | --- |
 | `model.safetensors` | FP32 model weights; no pickle model deserialization |
 | `tokenizer.json` | Locally trained BPE |
-| `config.json` | Encoder dimensions and context length |
+| `config.json` | Encoder dimensions, context length, pooling mode, and structured-state feature dimension |
 | `registry.json` | Exact category definitions and authorities used by the checkpoint |
-| `manifest.json` | File hashes, model/registry identities, stage, training lineage and metrics |
+| `manifest.json` | File hashes, model/registry identities, structured-state contract, stage, training lineage and metrics |
 
 Writes use a temporary sibling directory and rename on success. Loads verify hashes, registry identity, tokenizer compatibility, and weight shapes. Integrity checks detect accidental changes; they do not authenticate an untrusted manifest. Accept checkpoint and calibration artifacts from trusted sources.
 
@@ -62,7 +66,7 @@ Calibration searches one positive scalar temperature on a deterministic logarith
 
 Training rejects overlap between current train/validation groups and exact examples. Continued training also checks prior training versus new validation and prior validation versus new training. Calibration/test reject training and model-selection overlap. Test evaluation additionally rejects calibration overlap. Related but textually different documents require correct group IDs from the dataset author.
 
-Reports expose overall accuracy, NLL, multiclass Brier score, ten-bin ECE, score-threshold coverage/accuracy, confusion, and per-category counts. `false_negative_rate` specifically counts gold `applicable` predicted `not_applicable`; abstentions are not included in that count. Inspect the confusion matrix and applicable recall alongside it. Missing categories are explicitly listed. No metric grants designation or release authority.
+Reports expose overall accuracy, NLL, multiclass Brier score, ten-bin ECE, score-threshold coverage/accuracy, confusion, and per-category counts. `false_negative_rate` remains the narrow hard-negative metric: gold `applicable` predicted `not_applicable`. Reports now separately expose `applicable_recall`, `applicable_abstentions`, `applicable_abstention_rate`, and `applicable_miss_rate`, so abstaining on true-applicable rows cannot make the hard-negative metric look like full recall. Missing categories are explicitly listed. No metric grants designation or release authority.
 
 The SDK also performs independent block and whole-document passes. A calibration corpus of short scenarios does not establish calibration for long documents, OCR corruption, windowed text, or new provenance patterns. Evaluate those deployment conditions separately.
 

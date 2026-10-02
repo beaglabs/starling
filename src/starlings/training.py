@@ -25,6 +25,12 @@ from .datasets import (
 )
 from .model import DecisionEncoder, ModelConfig, seed_everything, select_device
 from .registry import digest, load_registry
+from .state_features import (
+    STATE_FEATURE_DIM,
+    STATE_FEATURE_NAMES,
+    STATE_FEATURE_VERSION,
+    state_feature_tensor,
+)
 from .tokenizer import encode
 
 
@@ -50,12 +56,24 @@ def initialize(tokenizer_path, output, config, registry_path=None, seed=42):
         ModelConfig(
             **{
                 "decision_pooling": "option_mean",
+                "state_feature_dim": STATE_FEATURE_DIM,
                 **config,
                 "vocab_size": tokenizer.get_vocab_size(),
                 "pad_id": tokenizer.token_to_id("[PAD]"),
             }
         )
     )
+    state_contract = None
+    if model.config.state_feature_dim:
+        if model.config.state_feature_dim != STATE_FEATURE_DIM:
+            raise ValueError(
+                f"Fresh structured-state checkpoints require state_feature_dim={STATE_FEATURE_DIM}"
+            )
+        state_contract = {
+            "version": STATE_FEATURE_VERSION,
+            "dimension": STATE_FEATURE_DIM,
+            "features": list(STATE_FEATURE_NAMES),
+        }
     save_checkpoint(
         output,
         model,
@@ -66,12 +84,14 @@ def initialize(tokenizer_path, output, config, registry_path=None, seed=42):
             "seed": seed,
             "random_initialization": True,
             "parameter_count": sum(p.numel() for p in model.parameters()),
+            "structured_state": state_contract,
         },
     )
     return {
         "checkpoint": str(output),
         "parameters": sum(p.numel() for p in model.parameters()),
         "decision_pooling": model.config.decision_pooling,
+        "state_feature_dim": model.config.state_feature_dim,
     }
 
 
@@ -103,15 +123,27 @@ def _option_sequence(tokenizer, packed, option_text, max_length):
     return sequence, option_mask
 
 
+def _state_batch(model, state, count, device):
+    if not model.config.state_feature_dim:
+        return None
+    if model.config.state_feature_dim != STATE_FEATURE_DIM:
+        raise ValueError(
+            "Checkpoint structured-state dimension does not match this runtime feature contract"
+        )
+    features = state_feature_tensor(state, device=device)
+    return features.unsqueeze(0).expand(count, -1)
+
+
 def decision_logits(model, tokenizer, content, state, question, device):
     options = sorted(question.criteria)
+    state_features = _state_batch(model, state, len(options), device)
     if model.config.decision_pooling == "cls":
         sequences = [
             encode(tokenizer, pack(content, state, question, option), model.config.max_length)
             for option in options
         ]
         ids, mask = tensor_batch(sequences, model.config.pad_id, device)
-        return options, model(ids, mask)
+        return options, model(ids, mask, state_features=state_features)
 
     sequences, option_masks = [], []
     for option in options:
@@ -127,7 +159,7 @@ def decision_logits(model, tokenizer, content, state, question, device):
         decision_mask[i, : len(option_mask)] = torch.tensor(
             option_mask, dtype=torch.bool, device=device
         )
-    return options, model(ids, mask, decision_mask)
+    return options, model(ids, mask, decision_mask, state_features)
 
 
 def row_loss(model, tokenizer, row, registry, device):
@@ -185,18 +217,21 @@ def train(
         for r in train_rows
     ):
         raise ValueError("Training overlaps prior model-selection validation")
-    # Validate every packed sequence before spending compute; never truncate training labels.
     for row in train_rows + val_rows:
         question = row_task(row, registry)
+        if model.config.state_feature_dim:
+            _state_batch(model, row.state, 1, selected)
         for option in question.criteria:
             packed = pack(content_text(row.content), row.state, question, option)
             if model.config.decision_pooling == "option_mean":
-                _option_sequence(tokenizer, packed, question.criteria[option], model.config.max_length)
+                _option_sequence(
+                    tokenizer, packed, question.criteria[option], model.config.max_length
+                )
             else:
                 encode(tokenizer, packed, model.config.max_length)
     if freeze_encoder:
         for name, param in model.named_parameters():
-            param.requires_grad_(name.startswith("scorer."))
+            param.requires_grad_(name.startswith("scorer.") or name.startswith("state_encoder."))
     optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=lr)
     losses, steps, started = [], 0, time.perf_counter()
     for epoch in range(epochs):
@@ -268,6 +303,7 @@ def train(
         "validation_loss": validation_loss,
         "device": str(selected),
         "decision_pooling": model.config.decision_pooling,
+        "state_feature_dim": model.config.state_feature_dim,
     }
 
 
@@ -287,7 +323,6 @@ def pretrain(
     texts = [line for line in Path(corpus).read_text().splitlines() if line.strip()]
     if not texts:
         raise ValueError("Pretraining corpus is empty")
-    # Streaming-scale corpus tooling can extend this bounded in-memory reference trainer.
     sequences = []
     for text in texts:
         token_ids = tokenizer.encode(text).ids
