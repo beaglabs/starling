@@ -54,7 +54,9 @@ def collect(checkpoint, dataset, device="auto", allow_unreviewed=False):
 
 
 def metrics(records, temperature=1.0, threshold=0.95):
-    correct = kept = kept_correct = missed = positives = false_positives = negatives = 0
+    correct = kept = kept_correct = 0
+    positives = applicable_hits = hard_false_negatives = applicable_abstentions = 0
+    negatives = false_positives = 0
     nll = brier = 0.0
     bins = [[] for _ in range(10)]
     outcomes = defaultdict(
@@ -64,6 +66,7 @@ def metrics(records, temperature=1.0, threshold=0.95):
             "gold_applicable": 0,
             "applicable_hits": 0,
             "applicable_false_negatives": 0,
+            "applicable_abstentions": 0,
             "gold_not_applicable": 0,
             "false_positives": 0,
             "abstentions": 0,
@@ -88,27 +91,29 @@ def metrics(records, temperature=1.0, threshold=0.95):
             kept_correct += hit
         row = record["row"]
         key = row.category or "custom_questions"
+        predicted = record["options"][pred]
         outcomes[key]["samples"] += 1
         outcomes[key]["correct"] += hit
-        predicted = record["options"][pred]
-        confusion[row.label][predicted] += 1
         outcomes[key]["abstentions"] += predicted == "insufficient_evidence"
+        confusion[row.label][predicted] += 1
         if row.category:
-            outcomes[key]["gold_applicable"] += row.label == "applicable"
-            outcomes[key]["applicable_hits"] += (
-                row.label == "applicable" and predicted == "applicable"
-            )
-            outcomes[key]["applicable_false_negatives"] += (
-                row.label == "applicable" and predicted == "not_applicable"
-            )
-            outcomes[key]["gold_not_applicable"] += row.label == "not_applicable"
-            outcomes[key]["false_positives"] += (
-                row.label == "not_applicable" and predicted == "applicable"
-            )
-            positives += row.label == "applicable"
-            missed += row.label == "applicable" and predicted == "not_applicable"
-            negatives += row.label == "not_applicable"
-            false_positives += row.label == "not_applicable" and predicted == "applicable"
+            is_applicable = row.label == "applicable"
+            is_not_applicable = row.label == "not_applicable"
+            app_hit = is_applicable and predicted == "applicable"
+            app_hard_negative = is_applicable and predicted == "not_applicable"
+            app_abstained = is_applicable and predicted == "insufficient_evidence"
+            outcomes[key]["gold_applicable"] += is_applicable
+            outcomes[key]["applicable_hits"] += app_hit
+            outcomes[key]["applicable_false_negatives"] += app_hard_negative
+            outcomes[key]["applicable_abstentions"] += app_abstained
+            outcomes[key]["gold_not_applicable"] += is_not_applicable
+            outcomes[key]["false_positives"] += is_not_applicable and predicted == "applicable"
+            positives += is_applicable
+            applicable_hits += app_hit
+            hard_false_negatives += app_hard_negative
+            applicable_abstentions += app_abstained
+            negatives += is_not_applicable
+            false_positives += is_not_applicable and predicted == "applicable"
     n = len(records)
     ece = sum(
         len(bucket)
@@ -126,8 +131,18 @@ def metrics(records, temperature=1.0, threshold=0.95):
         "threshold": threshold,
         "score_threshold_coverage": kept / n,
         "score_threshold_accuracy": kept_correct / kept if kept else None,
-        "applicable_mislabeled_not_applicable": missed,
-        "false_negative_rate": missed / positives if positives else None,
+        "applicable_hits": applicable_hits,
+        "applicable_abstentions": applicable_abstentions,
+        "applicable_mislabeled_not_applicable": hard_false_negatives,
+        "applicable_recall": applicable_hits / positives if positives else None,
+        "applicable_abstention_rate": applicable_abstentions / positives if positives else None,
+        "applicable_miss_rate": (
+            (applicable_abstentions + hard_false_negatives) / positives if positives else None
+        ),
+        "false_negative_rate": hard_false_negatives / positives if positives else None,
+        "false_negative_rate_interpretation": (
+            "Applicable predicted not_applicable only; abstained applicable cases are reported separately"
+        ),
         "false_positive_rate": false_positives / negatives if negatives else None,
         "confusion_matrix": {k: dict(v) for k, v in confusion.items()},
         "per_category": {
@@ -135,6 +150,15 @@ def metrics(records, temperature=1.0, threshold=0.95):
                 **v,
                 "accuracy": v["correct"] / v["samples"],
                 "applicable_recall": v["applicable_hits"] / v["gold_applicable"]
+                if v["gold_applicable"]
+                else None,
+                "applicable_abstention_rate": v["applicable_abstentions"] / v["gold_applicable"]
+                if v["gold_applicable"]
+                else None,
+                "applicable_miss_rate": (
+                    v["applicable_false_negatives"] + v["applicable_abstentions"]
+                )
+                / v["gold_applicable"]
                 if v["gold_applicable"]
                 else None,
                 "abstention_rate": v["abstentions"] / v["samples"],
@@ -148,7 +172,6 @@ def calibrate(checkpoint, dataset, output, *, device="auto", allow_unreviewed=Fa
     if Path(output).exists():
         raise FileExistsError("Calibration output exists; select a fresh path")
     records, manifest, registry, selected = collect(checkpoint, dataset, device, allow_unreviewed)
-    # Deterministic scalar search on held-out labels. Temperature changes confidence, not argmax.
     temperatures = torch.logspace(-1, 1.3, 121).tolist()
     best = min(temperatures, key=lambda t: metrics(records, t)["nll"])
     artifact = {
@@ -207,7 +230,6 @@ def evaluate(
         temperature = fitted["temperature"]
         if not math.isfinite(temperature) or temperature <= 0:
             raise ValueError("Invalid calibration temperature")
-    # Per-task calibration coverage is explicit. Never claim unseen tasks are calibrated.
     for record in records:
         record["calibrated"] = bool(fitted and record["signature"] in fitted["task_signatures"])
         record["temperature"] = temperature if record["calibrated"] else 1.0
