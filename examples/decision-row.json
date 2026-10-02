@@ -1,0 +1,18 @@
+{
+  "id": "wing-scenario-v1",
+  "group_id": "wing-scenario",
+  "content": {
+    "blocks": [{"id": "p1-b1", "text": "Replace with a documented or reviewer-checked fictional scenario."}]
+  },
+  "state": {
+    "provenance": {
+      "source_type": "unknown",
+      "public_release": "unknown",
+      "contract": "unknown"
+    }
+  },
+  "category": "controlled_technical_information",
+  "label": null,
+  "review": {"status": "pending", "reviewer": null, "rationale": null, "authority_refs": []},
+  "source_kind": "synthetic"
+}

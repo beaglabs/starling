@@ -1,0 +1,36 @@
+{
+  "content": {
+    "blocks": [
+      {"id": "p1-b1", "page": 1, "text": "Fictional example: we need 15 airplane wings."},
+      {"id": "p2-b1", "page": 2, "text": "Fictional example: an engineering drawing contains exact dimensions."}
+    ]
+  },
+  "state": {
+    "provenance": {
+      "status": "unverified",
+      "source_type": "fictional_example",
+      "public_release": "unknown",
+      "contract": "unknown"
+    },
+    "review_goal": "Identify passages that may require CUI review."
+  },
+  "categories": "all",
+  "questions": {
+    "missing_provenance": {
+      "instruction": "Does the supplied evidence establish the document's source and release status?",
+      "criteria": {
+        "yes": "Reliable source and release context is established.",
+        "no": "The evidence establishes that the asserted provenance is false.",
+        "insufficient_evidence": "Source or release context has not been established."
+      }
+    }
+  },
+  "candidates": [
+    {
+      "id": "candidate-1",
+      "evidence_refs": ["p2-b1"],
+      "category_hypotheses": ["controlled_technical_information"],
+      "quote": "an engineering drawing contains exact dimensions"
+    }
+  ]
+}

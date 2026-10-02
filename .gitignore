@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local training data, extracted documents and model artifacts
+runs/
+datasets/
+checkpoints/
+*.safetensors
