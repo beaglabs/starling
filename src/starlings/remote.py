@@ -35,7 +35,9 @@ class RemoteFactorResult(StrictModel):
     def valid_probabilities(self) -> RemoteFactorResult:
         if not self.probabilities:
             raise ValueError("Remote Factor result contains no probabilities")
-        if any(not math.isfinite(value) or not 0 <= value <= 1 for value in self.probabilities.values()):
+        if any(
+            not math.isfinite(value) or not 0 <= value <= 1 for value in self.probabilities.values()
+        ):
             raise ValueError("Remote Factor probabilities must be finite and in [0,1]")
         total = sum(self.probabilities.values())
         if abs(total - 1) > 1e-4:
