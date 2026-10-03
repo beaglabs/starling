@@ -1,5 +1,6 @@
 """Starlings: small, local decision models."""
 
+from .remote import RemoteFactor, RemoteFactorResult
 from .schemas import Candidate, Content, EvaluationResult, Question, SourceBlock
 from .sdk import Classifier
 from .trainer import EvaluationReport, FactorSpec, Trainer, TrainingConfig, TrainingResult
@@ -12,6 +13,8 @@ __all__ = [
     "TrainingConfig",
     "TrainingResult",
     "EvaluationReport",
+    "RemoteFactor",
+    "RemoteFactorResult",
     "Candidate",
     "Content",
     "EvaluationResult",
