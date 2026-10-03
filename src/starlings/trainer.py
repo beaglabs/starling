@@ -151,8 +151,10 @@ class Trainer:
         calibration_artifact = None
         calibration_path = None
         if calibration is not None:
-            calibration_path = Path(calibration_output) if calibration_output else Path(
-                f"{output_path}.calibration.json"
+            calibration_path = (
+                Path(calibration_output)
+                if calibration_output
+                else Path(f"{output_path}.calibration.json")
             )
             calibration_artifact = _calibrate(
                 output_path,
@@ -165,8 +167,10 @@ class Trainer:
         evaluation_report = None
         evaluation_path = None
         if test is not None:
-            evaluation_path = Path(evaluation_output) if evaluation_output else Path(
-                f"{output_path}.evaluation.json"
+            evaluation_path = (
+                Path(evaluation_output)
+                if evaluation_output
+                else Path(f"{output_path}.evaluation.json")
             )
             payload = _evaluate(
                 output_path,
@@ -238,9 +242,7 @@ class Trainer:
         return EvaluationReport.from_payload(payload)
 
     @staticmethod
-    def _validate_factor_datasets(
-        factor: FactorSpec, paths: list[str | Path]
-    ) -> str:
+    def _validate_factor_datasets(factor: FactorSpec, paths: list[str | Path]) -> str:
         expected_labels = set(factor.labels)
         task_signature = None
         for path in paths:
